@@ -1,40 +1,44 @@
+import os
+from io import BytesIO
+
+import faiss
 import httpx
 import nlp
-import json
-import os
 import numpy as np
 import pandas as pd
-from fuzzywuzzy import fuzz
-import faiss
 import torch
-
+from fuzzywuzzy import fuzz
+from pptx import Presentation
 from starlette.applications import Starlette
 from starlette.config import environ
 from starlette.middleware.cors import CORSMiddleware
-from starlette.responses import FileResponse, JSONResponse, StreamingResponse
-from starlette.staticfiles import StaticFiles
-from lfqa_utils import embed_passages_for_retrieval, query_mix_dense_index, make_qa_retriever_model, make_qa_s2s_model, qa_s2s_generate
-from tei import TEIFile
-from pptx import Presentation
-from io import BytesIO
+from starlette.responses import JSONResponse, StreamingResponse
 
+from lfqa_utils import (embed_passages_for_retrieval, make_qa_retriever_model,
+                        make_qa_s2s_model, qa_s2s_generate,
+                        query_mix_dense_index)
+from tei import TEIFile
 
 app = Starlette()
+
 os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-print(device)
+device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+print('Device:' + device)
 
-# qar_tokenizer, qar_model = make_qa_retriever_model(
-#     model_name="google/bert_uncased_L-8_H-768_A-12",
-#     from_file='models/unfilter_ret_model_2.pth',
-#     device=device
-# )
-# qa_s2s_tokenizer, qa_s2s_model = make_qa_s2s_model(
-#     model_name="facebook/bart-large-cnn",
-#     from_file='models/keyword_cnn_5e-5_3_resave.pth',
-#     device=device
-# )
+if device == 'cuda:0':
+    faiss_res = faiss.StandardGpuResources()
+
+qar_tokenizer, qar_model = make_qa_retriever_model(
+    model_name="google/bert_uncased_L-8_H-768_A-12",
+    from_file='models/unfilter_ret_model_2.pth',
+    device=device
+)
+qa_s2s_tokenizer, qa_s2s_model = make_qa_s2s_model(
+    model_name="facebook/bart-large-cnn",
+    from_file='models/keyword_cnn_5e-5_3_resave.pth',
+    device=device
+)
 
 def build_snippet(tei):
     # Use a breakpoint in the code line below to debug your script.
@@ -76,8 +80,13 @@ def build_input(question, tei, snippet, passage_emb, keyword_emb):
     snippet = pd.DataFrame.from_dict(snippet)
     snippet = nlp.Dataset.from_pandas(snippet)
     passage = faiss.IndexFlatIP(128)
-    passage.add(np.array(passage_emb, dtype=np.float32))
     keyword = faiss.IndexFlatIP(128)
+
+    if device == 'cuda:0':
+        passage = faiss.index_cpu_to_gpu(faiss_res, 0, passage)
+        keyword = faiss.index_cpu_to_gpu(faiss_res, 0, keyword)
+
+    passage.add(np.array(passage_emb, dtype=np.float32))
     keyword.add(np.array(keyword_emb, dtype=np.float32))
     doc, res_list = query_mix_dense_index(
         question, qar_model, qar_tokenizer,
@@ -102,9 +111,9 @@ def build_input(question, tei, snippet, passage_emb, keyword_emb):
 if 'DEBUG' in environ:
     app.add_middleware(CORSMiddleware, allow_origin_regex='http://localhost:.*',
                        allow_methods=['*'], allow_headers=['*'])
-
-app.mount('/static', StaticFiles(directory="static"))
-
+else:
+    app.add_middleware(CORSMiddleware, allow_origin_regex='https://doc2slides.s3-web.us-east.cloud-object-storage.appdomain.cloud',
+                       allow_methods=['*'], allow_headers=['*'])
 
 @app.on_event("startup")
 async def startup():
@@ -148,12 +157,7 @@ async def gen_slide(request):
         min_len=64,
         max_len=200,
         max_input_length=1024,
-        device="cpu")[0]
-#     time.sleep(2)
-#     answer = '''Model LineUpper was designed to support understanding data and model comparison tasks.
-# We conducted qualitative coding on the interview transcripts while watching the videos to understand users' activities.
-# One user repeatedly mentioned in the interviews is to better understand the data: the types of features, their range and distribution, and example data instances.
-# All participants investigated the global FI and used it to support their model choices.'''
+        device=device)[0]
 
     return JSONResponse({
         'answer': answer.split('\n')
@@ -188,10 +192,3 @@ async def download_slides(request):
     output.seek(0)
 
     return StreamingResponse(output, media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation")
-        
-
-
-if 'DEBUG' not in environ:
-    @app.route('/{path:path}')
-    async def home(request):
-        return FileResponse('index.html')

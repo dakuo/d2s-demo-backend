@@ -1,6 +1,5 @@
 import functools
 import math
-import os  # noqa: F401
 from random import choice, randint
 from time import time
 
@@ -10,15 +9,7 @@ import torch.utils.checkpoint as checkpoint
 from torch.utils.data import DataLoader, Dataset, RandomSampler, SequentialSampler
 from tqdm import tqdm
 
-#import faiss  # noqa: F401
-import nlp  # noqa: F401
-import pandas as pd
-#from elasticsearch import Elasticsearch  # noqa: F401
-#from elasticsearch.helpers import bulk, streaming_bulk  # noqa: F401
 from transformers import AdamW, AutoModel, AutoModelForSeq2SeqLM, AutoTokenizer, get_linear_schedule_with_warmup
-
-pd.set_option("display.max_colwidth", None)
-
 
 ###############
 # Sparse index
@@ -230,13 +221,13 @@ def make_qa_retriever_batch(qa_list, tokenizer, max_len=64, device="cuda:0"):
     q_ls = [q for q, a in qa_list]
     a_ls = [a for q, a in qa_list]
     q_toks = tokenizer.batch_encode_plus(
-        q_ls, max_length=max_len, pad_to_max_length=True)
+        q_ls, max_length=max_len, pad_to_max_length=True, truncation=True)
     q_ids, q_mask = (
         torch.LongTensor(q_toks["input_ids"]).to(device),
         torch.LongTensor(q_toks["attention_mask"]).to(device),
     )
     a_toks = tokenizer.batch_encode_plus(
-        a_ls, max_length=max_len, pad_to_max_length=True)
+        a_ls, max_length=max_len, pad_to_max_length=True, truncation=True)
     a_ids, a_mask = (
         torch.LongTensor(a_toks["input_ids"]).to(device),
         torch.LongTensor(a_toks["attention_mask"]).to(device),
@@ -461,14 +452,14 @@ def make_qa_s2s_batch(qa_list, tokenizer, max_len=64,
     q_ls = [q for q, a in qa_list]
     a_ls = [a for q, a in qa_list]
     q_toks = tokenizer.batch_encode_plus(
-        q_ls, max_length=max_len, pad_to_max_length=True)
+        q_ls, max_length=max_len, pad_to_max_length=True, truncation=True)
     q_ids, q_mask = (
         torch.LongTensor(q_toks["input_ids"]).to(device),
         torch.LongTensor(q_toks["attention_mask"]).to(device),
     )
     a_toks = tokenizer.batch_encode_plus(
         a_ls, max_length=min(
-            max_len, max_a_len), pad_to_max_length=True)
+            max_len, max_a_len), pad_to_max_length=True, truncation=True)
     a_ids, a_mask = (
         torch.LongTensor(a_toks["input_ids"]).to(device),
         torch.LongTensor(a_toks["attention_mask"]).to(device),
@@ -620,7 +611,7 @@ def qa_s2s_generate(
         device="cuda:0",
 ):
     model_inputs = make_qa_s2s_batch(
-        [(question_doc, "A")], qa_s2s_tokenizer, max_input_length, device=device, )
+        [(question_doc, "A")], qa_s2s_tokenizer, max_input_length, device=device)
     n_beams = num_answers if num_beams is None else max(num_beams, num_answers)
     generated_ids = qa_s2s_model.generate(
         input_ids=model_inputs["input_ids"],
@@ -686,7 +677,7 @@ def qa_s2s_generate_two(
 def embed_passages_for_retrieval(
         passages, tokenizer, qa_embedder, max_length=128, device="cuda:0"):
     a_toks = tokenizer.batch_encode_plus(
-        passages, max_length=max_length, pad_to_max_length=True)
+        passages, max_length=max_length, pad_to_max_length=True, truncation=True)
     a_ids, a_mask = (
         torch.LongTensor(a_toks["input_ids"]).to(device),
         torch.LongTensor(a_toks["attention_mask"]).to(device),
@@ -701,7 +692,7 @@ def embed_passages_for_retrieval(
 def embed_questions_for_retrieval(
         q_ls, tokenizer, qa_embedder, device="cuda:0"):
     q_toks = tokenizer.batch_encode_plus(
-        q_ls, max_length=128, pad_to_max_length=True)
+        q_ls, max_length=128, pad_to_max_length=True, truncation=True)
     q_ids, q_mask = (
         torch.LongTensor(q_toks["input_ids"]).to(device),
         torch.LongTensor(q_toks["attention_mask"]).to(device),

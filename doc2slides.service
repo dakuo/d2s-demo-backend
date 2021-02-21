@@ -1,0 +1,11 @@
+[Unit]
+Description=Description
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/yunfeng/server
+ExecStart=/home/yunfeng/miniconda3/bin/uvicorn app:app --port 5000 --ssl-keyfile=./server.key --ssl-certfile=./server.crt
+
+[Install]
+WantedBy=multi-user.target

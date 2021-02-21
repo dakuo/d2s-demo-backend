@@ -1,0 +1,1 @@
+rsync -av --exclude-from=deploy_ignore.txt . yunfeng@teamtablegpudemo.sl.cloud9.ibm.com:~/server/
