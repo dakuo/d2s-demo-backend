@@ -86,7 +86,6 @@ class TEIFile:
             tmptxt = []
             for head in self.soup.find_all("head"):
                 if head.get("n"):
-                    # print(head)
                     check = head.parent.get_text(
                         separator=' ', strip=True).replace(
                         head.text, "", 1)
@@ -119,12 +118,11 @@ class TEIFile:
             if len(self._headers) != 0:
                 self._headers[-1]['end'] = self._text[-1]['id']
 
-            oldstart = -1
-            for i in self._headers:
-                if i['start'] < oldstart:
-                    print("BIG ERROR:", self.filename)
-                    break
-                oldstart = i['start']
+            # oldstart = -1
+            # for i in self._headers:
+            #     if i['start'] < oldstart:
+            #         break
+            #     oldstart = i['start']
 
         return self._headers
 

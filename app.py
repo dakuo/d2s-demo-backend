@@ -26,7 +26,7 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 print('Device:' + device)
 
-if device == 'cuda:0':
+if device.startswith('cuda'):
     faiss_res = faiss.StandardGpuResources()
 
 qar_tokenizer, qar_model = make_qa_retriever_model(
@@ -82,7 +82,7 @@ def build_input(question, tei, snippet, passage_emb, keyword_emb):
     passage = faiss.IndexFlatIP(128)
     keyword = faiss.IndexFlatIP(128)
 
-    if device == 'cuda:0':
+    if device.startswith('cuda'):
         passage = faiss.index_cpu_to_gpu(faiss_res, 0, passage)
         keyword = faiss.index_cpu_to_gpu(faiss_res, 0, keyword)
 
@@ -101,7 +101,7 @@ def build_input(question, tei, snippet, passage_emb, keyword_emb):
             if elem == begin:
                 continue
             if begin[1] == elem[1][:len(begin[1])]:
-                keywords.append(elem['section'])
+                keywords.append(elem[0])
         if len(keywords) > 0:
             question = question + ', ' + ', '.join(keywords)
     question_doc = "question: {} context: {}".format(question, doc)
@@ -132,6 +132,9 @@ async def encode_paper(request):
     async with httpx.AsyncClient() as client:
         r = await client.post('http://localhost:8070/api/processFulltextDocument',
                               files={'input': content}, timeout=None)
+        with open('example.xml', 'w') as f:
+            f.write(r.text)
+
         tei = TEIFile(r.text)
         paper_snippet = build_snippet(tei)
         passage_emb, keyword_emb = build_indices(
@@ -171,22 +174,23 @@ async def download_slides(request):
     bullet_slide_layout = prs.slide_layouts[1]
     output = BytesIO()
     for slideContent in req['slides']:
-        slide = prs.slides.add_slide(bullet_slide_layout)
-        shapes = slide.shapes
+        if slideContent['title']:
+            slide = prs.slides.add_slide(bullet_slide_layout)
+            shapes = slide.shapes
 
-        title_shape = shapes.title
-        body_shape = shapes.placeholders[1]
+            title_shape = shapes.title
+            body_shape = shapes.placeholders[1]
 
-        title_shape.text = slideContent['title']
+            title_shape.text = slideContent['title']
 
-        tf = body_shape.text_frame
+            tf = body_shape.text_frame
 
-        for bullet in slideContent['content']:
-            p = tf.add_paragraph()
-            p.text = bullet
-            p.level = 1
-        
-        tf.fit_text(font_family="Arial")
+            for bullet in slideContent['content']:
+                p = tf.add_paragraph()
+                p.text = bullet
+                p.level = 1
+            
+            tf.fit_text(font_family="Arial")
 
     prs.save(output)
     output.seek(0)
