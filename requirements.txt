@@ -37,4 +37,4 @@ nltk==3.5
 rouge_score>=0.0.4
 lxml==4.6.2
 python-pptx==0.6.18
-python-Levenshtein=0.12.2
+python-Levenshtein==0.12.2
